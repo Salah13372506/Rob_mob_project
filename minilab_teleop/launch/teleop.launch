@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Launch joy node -->
+    <node pkg="joy" type="joy_node" name="joy_node">
+        <param name="dev" value="/dev/input/js0" />
+    </node>
+    
+    <!-- Launch teleop node -->
+    <node pkg="minilab_teleop" type="teleop_node.py" name="minilab_teleop" output="screen">
+        <param name="linear_scale" value="0.5" />
+        <param name="angular_scale" value="1.0" />
+    </node>
+</launch>

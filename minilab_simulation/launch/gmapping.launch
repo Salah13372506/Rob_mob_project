@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<launch>
+    <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
+        <!-- Map size and resolution -->
+        <param name="xmin" value="-10"/>
+        <param name="ymin" value="-10"/>
+        <param name="xmax" value="10"/>
+        <param name="ymax" value="10"/>
+        <param name="delta" value="0.05"/>
+
+        <!-- Scan parameters -->
+        <param name="maxUrange" value="10.0"/>
+        <param name="maxRange" value="10.0"/>
+
+        <!-- Update parameters -->
+        <param name="minimumScore" value="100"/>
+        <param name="linearUpdate" value="0.2"/>
+        <param name="angularUpdate" value="0.2"/>
+        <param name="temporalUpdate" value="0.5"/>
+    </node>
+</launch>
