@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Chargement de la nouvelle carte -->
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find minilab_simulation)/map/new_map.yaml"/>
+    
+    <!-- Publication de la transformation statique entre map et odom -->
+    <node pkg="tf" type="static_transform_publisher" name="map_to_odom" 
+        args="0 0 0 0 0 0 map odom 100" />
+        
+    <!-- Lancement de RViz avec la configuration sauvegardée -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find minilab_simulation)/config/minilab.rviz"/>
+</launch>
