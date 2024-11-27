@@ -1,10 +1,13 @@
 <launch>
     <!-- Charger la carte -->
-    <node name="map_server" pkg="map_server" type="map_server" args="$(find minilab_navigation)/maps/new_map.yaml"/>
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find minilab_navigation)/maps/buvette.yaml"/>
+
+    <!-- Publier la transformation statique map->odom -->
+    <node name="static_map_odom_tf" pkg="minilab_navigation" type="static_map_odom_tf.py" output="screen"/>
 
     <!-- Lancer le planificateur de chemin -->
     <node name="path_planner" pkg="minilab_navigation" type="path_planner_node.py" output="screen"/>
 
     <!-- RViz pour la visualisation -->
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find minilab_navigation)/rviz/path_planning.rviz"/>
+    <node name="rviz" pkg="rviz" type="rviz"/>
 </launch>

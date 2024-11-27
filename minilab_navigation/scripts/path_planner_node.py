@@ -4,54 +4,81 @@ import rospy
 from nav_msgs.msg import OccupancyGrid, Path
 from geometry_msgs.msg import PoseStamped, Point
 from visualization_msgs.msg import Marker
-from std_msgs.msg import Header
 import tf2_ros
 import tf2_geometry_msgs
-from astar_planner import AStarPlanner
+from astar_planner import AStarPlanner 
 
 class PathPlannerNode:
     def __init__(self):
         rospy.init_node('path_planner_node')
         
+        # Pour debug
+        self.debug = True
+        
         self.planner = AStarPlanner()
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
-
+        
+        # Position de départ par défaut (centre de la carte)
+        self.start_pose = PoseStamped()
+        self.start_pose.pose.position.x = 0
+        self.start_pose.pose.position.y = 0
+        
         # Publishers
         self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=1)
         self.marker_pub = rospy.Publisher('/path_markers', Marker, queue_size=1)
-
-        # Subscribers
+        
+        # Subscribers - Changement du topic pour correspondre à RViz
         rospy.Subscriber('/map', OccupancyGrid, self.map_callback)
-        rospy.Subscriber('/goal_pose', PoseStamped, self.goal_callback)
+        rospy.Subscriber('/move_base_simple/goal', PoseStamped, self.goal_callback)
+        
+        if self.debug:
+            rospy.loginfo("Path planner node initialized")
 
     def map_callback(self, msg):
-        """Reçoit la carte et la transmet au planificateur"""
+        if self.debug:
+            rospy.loginfo("Received map update")
         self.planner.set_map(msg)
 
-    def goal_callback(self, goal_msg):
-        """Calcule un chemin quand un nouvel objectif est reçu"""
+    def get_robot_pose(self):
         try:
-            # Obtenir la position actuelle du robot
+            # Essayer d'obtenir la transformation de base_link vers map
             transform = self.tf_buffer.lookup_transform(
-                'map', 'base_link', rospy.Time(0))
-            start_pose = transform.transform.translation
+                'map',
+                'base_link',
+                rospy.Time(0),
+                rospy.Duration(1.0)
+            )
+            if self.debug:
+                rospy.loginfo(f"Robot position: {transform.transform.translation.x}, {transform.transform.translation.y}")
+            return (transform.transform.translation.x, transform.transform.translation.y)
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            rospy.logwarn(f"Could not get robot pose: {e}")
+            # En cas d'échec, utiliser une position par défaut
+            if self.debug:
+                rospy.loginfo("Using default start position (0,0)")
+            return (0, 0)
 
-            # Calculer le chemin
-            path = self.planner.find_path(
-                (start_pose.x, start_pose.y),
-                (goal_msg.pose.position.x, goal_msg.pose.position.y))
+    def goal_callback(self, goal_msg):
+        if self.debug:
+            rospy.loginfo(f"Received goal: {goal_msg.pose.position.x}, {goal_msg.pose.position.y}")
+        
+        # Obtenir la position actuelle du robot
+        start_pos = self.get_robot_pose()
+        
+        # Calculer le chemin
+        path = self.planner.find_path(
+            start_pos,
+            (goal_msg.pose.position.x, goal_msg.pose.position.y)
+        )
 
-            if path:
-                # Publier le chemin
-                self.publish_path(path)
-                self.publish_markers(path)
-            else:
-                rospy.logwarn("Aucun chemin trouvé!")
-
-        except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
-                tf2_ros.ExtrapolationException) as e:
-            rospy.logwarn(f"Erreur TF: {str(e)}")
+        if path:
+            if self.debug:
+                rospy.loginfo(f"Path found with {len(path)} points")
+            self.publish_path(path)
+            self.publish_markers(path)
+        else:
+            rospy.logwarn("No path found!")
 
     def publish_path(self, path):
         """Publie le chemin comme un message Path"""
