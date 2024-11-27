@@ -8,6 +8,6 @@
     <!-- Lancer le planificateur de chemin -->
     <node name="path_planner" pkg="minilab_navigation" type="path_planner_node.py" output="screen"/>
 
-    <!-- RViz pour la visualisation -->
-    <node name="rviz" pkg="rviz" type="rviz"/>
+    <!-- RViz pour la visualisation avec config -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find minilab_navigation)/config/path.rviz"/>
 </launch>

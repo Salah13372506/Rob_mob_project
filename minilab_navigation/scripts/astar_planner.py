@@ -16,7 +16,7 @@ class AStarPlanner:
         self.width = None
         self.height = None
         # Distance de sécurité en cellules (2 cellules = 10cm avec résolution 0.05)
-        self.inflation_radius = 2
+        self.inflation_radius = 6
 
     def set_map(self, occupancy_grid):
         """Configure la carte et ses paramètres"""
