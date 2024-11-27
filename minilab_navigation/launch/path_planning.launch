@@ -1,0 +1,10 @@
+<launch>
+    <!-- Charger la carte -->
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find minilab_navigation)/maps/new_map.yaml"/>
+
+    <!-- Lancer le planificateur de chemin -->
+    <node name="path_planner" pkg="minilab_navigation" type="path_planner_node.py" output="screen"/>
+
+    <!-- RViz pour la visualisation -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find minilab_navigation)/rviz/path_planning.rviz"/>
+</launch>
