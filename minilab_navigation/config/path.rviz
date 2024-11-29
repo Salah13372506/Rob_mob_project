@@ -75,60 +75,6 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
-        base_footprint:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        base_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        camera_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        hokuyo_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        ir1:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        ir2:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        ir3:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        ir4:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        ir5:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        left_wheel:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        right_wheel:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
       Name: RobotModel
       Robot Description: robot_description
       TF Prefix: ""
@@ -166,31 +112,9 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: true
-        base_footprint:
-          Value: true
-        base_link:
-          Value: true
-        camera_link:
-          Value: true
-        hokuyo_link:
-          Value: true
-        ir1:
-          Value: true
-        ir2:
-          Value: true
-        ir3:
-          Value: true
-        ir4:
-          Value: true
-        ir5:
-          Value: true
-        left_wheel:
-          Value: true
         map:
           Value: true
         odom:
-          Value: true
-        right_wheel:
           Value: true
       Marker Alpha: 1
       Marker Scale: 1
@@ -201,26 +125,7 @@ Visualization Manager:
       Tree:
         map:
           odom:
-            base_footprint:
-              base_link:
-                camera_link:
-                  {}
-                hokuyo_link:
-                  {}
-                ir1:
-                  {}
-                ir2:
-                  {}
-                ir3:
-                  {}
-                ir4:
-                  {}
-                ir5:
-                  {}
-                left_wheel:
-                  {}
-                right_wheel:
-                  {}
+            {}
       Update Interval: 0
       Value: true
   Enabled: true
@@ -267,9 +172,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.785398006439209
+      Pitch: 1.1603976488113403
       Target Frame: <Fixed Frame>
-      Yaw: 0.785398006439209
+      Yaw: 1.090397834777832
     Saved: ~
 Window Geometry:
   Displays:

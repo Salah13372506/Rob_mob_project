@@ -12,7 +12,7 @@
 		<arg name="debug" value="false"/>
 	</include>
   
-  	<node name="spawn_robot1" pkg="gazebo_ros" type="spawn_model" args="-file $(find minilab_model)/urdf/minilab_equiped.urdf -urdf  -x 18.0 -y 18 -z 0.05 -Y 1.57 -model minilab_equiped" />
+  	<node name="spawn_robot1" pkg="gazebo_ros" type="spawn_model" args="-file $(find minilab_model)/urdf/minilab_equiped.urdf -urdf  -x 0.0 -y 0.0 -z 0.05 -Y 1.57 -model minilab_equiped" />
 		
 	<include file="$(find minilab_simulation)/launch/$(arg map_name).launch" />	
 

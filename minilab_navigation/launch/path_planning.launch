@@ -10,4 +10,6 @@
 
     <!-- RViz pour la visualisation avec config -->
     <node name="rviz" pkg="rviz" type="rviz" args="-d $(find minilab_navigation)/config/path.rviz"/>
+
+    
 </launch>
