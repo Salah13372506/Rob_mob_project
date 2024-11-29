@@ -13,12 +13,12 @@ def publish_static_transform():
     static_transform.header.frame_id = "map"
     static_transform.child_frame_id = "odom"
 
-    # Position initiale (vous pouvez ajuster si nécessaire)
+
     static_transform.transform.translation.x = 0.0
     static_transform.transform.translation.y = 0.0
     static_transform.transform.translation.z = 0.0
 
-    # Rotation nulle (quaternion représentant aucune rotation)
+
     static_transform.transform.rotation.x = 0.0
     static_transform.transform.rotation.y = 0.0
     static_transform.transform.rotation.z = 0.0

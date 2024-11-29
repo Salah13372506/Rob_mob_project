@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 import rospy
-from nav_msgs.msg import OccupancyGrid, Path
+from nav_msgs.msg import Path
+from nav_msgs.srv import GetMap
 from geometry_msgs.msg import PoseStamped, Point
 from visualization_msgs.msg import Marker
 import tf2_ros
@@ -12,14 +13,12 @@ class PathPlannerNode:
     def __init__(self):
         rospy.init_node('path_planner_node')
         
-        # Pour debug
         self.debug = True
-        
         self.planner = AStarPlanner()
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         
-        # Position de départ par défaut (centre de la carte)
+        # Position de départ par défaut
         self.start_pose = PoseStamped()
         self.start_pose.pose.position.x = 0
         self.start_pose.pose.position.y = 0
@@ -28,21 +27,32 @@ class PathPlannerNode:
         self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=1)
         self.marker_pub = rospy.Publisher('/path_markers', Marker, queue_size=1)
         
-        # Subscribers - Changement du topic pour correspondre à RViz
-        rospy.Subscriber('/map', OccupancyGrid, self.map_callback)
+        # Attendre que le service dynamic_map soit disponible
+        rospy.wait_for_service('dynamic_map')
+        self.get_map = rospy.ServiceProxy('dynamic_map', GetMap)
+        
+        # Subscriber pour le goal
         rospy.Subscriber('/move_base_simple/goal', PoseStamped, self.goal_callback)
         
         if self.debug:
             rospy.loginfo("Path planner node initialized")
 
-    def map_callback(self, msg):
-        if self.debug:
-            rospy.loginfo("Received map update")
-        self.planner.set_map(msg)
+    def update_map(self):
+        """Récupère la carte via le service dynamic_map"""
+        try:
+            response = self.get_map()
+            if response is not None:
+                self.planner.set_map(response.map)
+                if self.debug:
+                    rospy.loginfo("Successfully got map from service")
+                return True
+            return False
+        except rospy.ServiceException as e:
+            rospy.logerr(f"Service call failed: {e}")
+            return False
 
     def get_robot_pose(self):
         try:
-            # Essayer d'obtenir la transformation de base_link vers map
             transform = self.tf_buffer.lookup_transform(
                 'map',
                 'base_link',
@@ -54,7 +64,6 @@ class PathPlannerNode:
             return (transform.transform.translation.x, transform.transform.translation.y)
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
             rospy.logwarn(f"Could not get robot pose: {e}")
-            # En cas d'échec, utiliser une position par défaut
             if self.debug:
                 rospy.loginfo("Using default start position (0,0)")
             return (0, 0)
@@ -62,6 +71,11 @@ class PathPlannerNode:
     def goal_callback(self, goal_msg):
         if self.debug:
             rospy.loginfo(f"Received goal: {goal_msg.pose.position.x}, {goal_msg.pose.position.y}")
+        
+        # Obtenir la carte mise à jour avant de planifier
+        if not self.update_map():
+            rospy.logerr("Failed to get map from service, cannot plan path")
+            return
         
         # Obtenir la position actuelle du robot
         start_pos = self.get_robot_pose()
@@ -105,7 +119,7 @@ class PathPlannerNode:
         marker.id = 0
         marker.type = Marker.LINE_STRIP
         marker.action = Marker.ADD
-        marker.scale.x = 0.05  # Largeur de la ligne
+        marker.scale.x = 0.05
         marker.color.r = 0.0
         marker.color.g = 1.0
         marker.color.b = 0.0
