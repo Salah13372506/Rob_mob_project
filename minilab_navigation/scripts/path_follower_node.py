@@ -1,29 +1,34 @@
 #!/usr/bin/env python3
-import sys
-print("Python path:", sys.path)
-print("Python version:", sys.version)
 import numpy as np
 import rospy
 from nav_msgs.msg import Path
 from geometry_msgs.msg import Twist
 from scipy.interpolate import CubicSpline
 import tf2_ros
-from scipy.optimize import minimize_scalar
 
 class PathFollower:
     def __init__(self):
+        # Paramètres géométriques
+        self.l1 = 0.15  # Distance du point de contrôle à l'axe des roues (doit être non nul)
+        
         # Paramètres du contrôleur
         self.k1 = 2.0  # Gain pour l'erreur d'orientation
-        self.k2 = 2.0 # Gain pour l'erreur latérale
-        self.v_const = 0.2  # Vitesse linéaire constante
-        self.lookahead = 0.5  # Distance de lookahead pour la recherche de point
+        self.k2 = 5.0  # Gain pour l'erreur latérale
+        self.max_v = 0.5  # Vitesse linéaire maximale
+        self.min_v = 0.1  # Vitesse linéaire minimale
+        self.max_omega = 1.0  # Vitesse angulaire maximale
+        self.lookahead = 0.5  # Distance de lookahead
+        
+        # Seuils de sécurité
+        self.max_lateral_error = 1.0  # Erreur latérale maximale autorisée
+        self.max_curvature = 2.0  # Courbure maximale pour l'adaptation de vitesse
         
         # Variables pour le chemin
         self.path_x = None
         self.path_y = None
         self.spline_x = None
         self.spline_y = None
-        self.current_s = 0.0  # Position curviligne actuelle
+        self.current_s = 0.0
         self.path_length = None
         
         # Setup ROS
@@ -76,44 +81,66 @@ class PathFollower:
             rospy.logwarn("Could not get robot pose")
             return None
 
-    def find_closest_point(self, robot_x, robot_y):
-        def distance_squared(s):
-            path_x = self.spline_x(s)
-            path_y = self.spline_y(s)
-            return (path_x - robot_x)**2 + (path_y - robot_y)**2
+    def compute_path_curvature(self, s):
+        # Calculer la courbure à partir des dérivées premières et secondes
+        dx = self.spline_x.derivative(1)(s)
+        dy = self.spline_y.derivative(1)(s)
+        ddx = self.spline_x.derivative(2)(s)
+        ddy = self.spline_y.derivative(2)(s)
         
-        # Recherche locale autour de la position curviligne actuelle
-        window = 0.5  # Taille de la fenêtre de recherche
-        s_min = max(0, self.current_s - window)
-        s_max = min(self.path_length, self.current_s + window)
+        curvature = (dx*ddy - dy*ddx) / (dx**2 + dy**2)**(3/2)
+        return abs(curvature)
+
+    def adapt_velocity(self, curvature, lateral_error):
+        # Réduire la vitesse en fonction de la courbure et de l'erreur latérale
+        curvature_factor = max(0, 1 - curvature/self.max_curvature)
+        error_factor = max(0, 1 - lateral_error/self.max_lateral_error)
         
-        result = minimize_scalar(distance_squared, 
-                               bounds=(s_min, s_max),
-                               method='bounded')
-        
-        return result.x
+        # Vitesse adaptative
+        v = self.max_v * min(curvature_factor, error_factor)
+        return max(self.min_v, v)
 
     def compute_control(self, robot_x, robot_y, robot_theta, s):
-        # Position sur le chemin
+        # Position et tangente sur le chemin
         path_x = self.spline_x(s)
         path_y = self.spline_y(s)
-        
-        # Tangente
         dx = self.spline_x.derivative(1)(s)
         dy = self.spline_y.derivative(1)(s)
         path_theta = np.arctan2(dy, dx)
         
-        # Erreurs
+        # Calcul des erreurs
         theta_e = self.normalize_angle(robot_theta - path_theta)
+        
+        # Calcul précis de l'erreur latérale avec signe
         d = np.sign((path_y - robot_y)*np.cos(robot_theta) - 
-                   (path_x - robot_x)*np.sin(robot_theta)) * \
+                    (path_x - robot_x)*np.sin(robot_theta)) * \
             np.sqrt((path_x - robot_x)**2 + (path_y - robot_y)**2)
         
-        # Loi de commande
-        omega = -self.k1*self.v_const*np.sin(theta_e)/theta_e*theta_e - \
-                self.k2*self.v_const*d
+        # Calculer la courbure et adapter la vitesse
+        curvature = self.compute_path_curvature(s)
+        v = self.adapt_velocity(curvature, abs(d))
         
-        return self.v_const, omega
+        # Vérification de sécurité
+        if abs(d) > self.max_lateral_error:
+            rospy.logwarn("Erreur latérale trop grande, arrêt du robot")
+            return 0.0, 0.0
+            
+        # Calcul du gain adaptatif k(d,theta_e)
+        k = self.k2 * np.cos(theta_e)  # k > 0 pour theta_e ∈ ]-π/2, π/2[
+        
+        # Loi de commande selon le cours
+        if abs(theta_e) < np.pi/2:  # Condition de stabilité
+            omega = -(v/(self.l1*np.cos(theta_e)))*np.sin(theta_e) - \
+                    (v/np.cos(theta_e))*k*d
+            
+            # Limiter la vitesse angulaire
+            omega = np.clip(omega, -self.max_omega, self.max_omega)
+        else:
+            # Si l'erreur d'orientation est trop grande, rotation sur place
+            omega = self.k1 * theta_e
+            v = 0.0
+            
+        return v, omega
 
     def normalize_angle(self, angle):
         while angle > np.pi:
@@ -133,7 +160,19 @@ class PathFollower:
         robot_x, robot_y, robot_theta = robot_pose
         
         # Trouver le point le plus proche sur le chemin
-        self.current_s = self.find_closest_point(robot_x, robot_y)
+        def distance_squared(s):
+            path_x = self.spline_x(s)
+            path_y = self.spline_y(s)
+            return (path_x - robot_x)**2 + (path_y - robot_y)**2
+        
+        # Recherche locale autour de la position curviligne actuelle
+        s_min = max(0, self.current_s - self.lookahead)
+        s_max = min(self.path_length, self.current_s + self.lookahead)
+        
+        # Échantillonnage discret pour trouver le minimum
+        s_samples = np.linspace(s_min, s_max, 20)
+        distances = [distance_squared(s) for s in s_samples]
+        self.current_s = s_samples[np.argmin(distances)]
         
         # Si on est à la fin du chemin, arrêter
         if self.current_s >= self.path_length - 0.1:

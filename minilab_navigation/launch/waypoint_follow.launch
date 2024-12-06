@@ -1,0 +1,33 @@
+<launch>
+    <!-- Launch the simulation environment first -->
+    <include file="$(find minilab_simulation)/launch/minilab_simulation.launch"/>
+
+    <!-- SLAM avec gmapping -->
+    <include file="$(find minilab_simulation)/launch/gmapping.launch"/>
+
+    <!-- Launch teleop node for converting joy commands to robot velocity -->
+    <node pkg="minilab_teleop" type="teleop_node.py" name="minilab_teleop" output="screen">
+        <param name="linear_scale" value="0.5" />
+        <param name="angular_scale" value="1.0" />
+    </node>
+
+    <!-- Launch joy_node -->
+    <node name="joy_node" pkg="joy" type="joy_node"/>
+
+    <!-- Planificateur de chemin -->
+    <node name="path_planner" pkg="minilab_navigation" type="path_planner_node.py" output="screen"/>
+
+    <!-- Waypoint follower à la place du path follower -->
+    <node name="waypoint_follower" pkg="minilab_navigation" type="waypoint_follower_node.py" output="screen">
+        <param name="k_rho" value="15" />        <!-- Gain pour la distance (similaire à v_const) -->
+        <param name="k_alpha" value="15" />      <!-- Gain pour l'angle (similaire à k1) -->
+        <param name="max_linear_speed" value="1.0" />
+        <param name="max_angular_speed" value="1.5" />
+        <param name="dist_threshold" value="0.1" />
+        <param name="lookahead_distance" value="0.2" />
+        <param name="max_points_ahead" value="5" />
+    </node>
+
+    <!-- RViz -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find minilab_navigation)/config/path.rviz"/>
+</launch>
