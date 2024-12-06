@@ -18,6 +18,12 @@
     <!-- Planificateur de chemin -->
     <node name="path_planner" pkg="minilab_navigation" type="path_planner_node.py" output="screen"/>
     
+    <node name="path_follower" pkg="minilab_navigation" type="path_follower_node.py" output="screen">
+        <param name="k1" value="1.0" />
+        <param name="k2" value="0.5" />
+        <param name="v_const" value="0.2" />
+    </node>
+
     <!-- RViz -->
     <node name="rviz" pkg="rviz" type="rviz" args="-d $(find minilab_navigation)/config/path.rviz"/>
 </launch>

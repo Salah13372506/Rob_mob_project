@@ -1,150 +1,158 @@
 #!/usr/bin/env python3
-
-import rospy
+import sys
+print("Python path:", sys.path)
+print("Python version:", sys.version)
 import numpy as np
+import rospy
 from nav_msgs.msg import Path
-from geometry_msgs.msg import Twist, PoseStamped
+from geometry_msgs.msg import Twist
 from scipy.interpolate import CubicSpline
 import tf2_ros
-import tf2_geometry_msgs
+from scipy.optimize import minimize_scalar
 
-class PathFollowerNode:
+class PathFollower:
     def __init__(self):
-        rospy.init_node('path_follower_node')
+        # Paramètres du contrôleur
+        self.k1 = 2.0  # Gain pour l'erreur d'orientation
+        self.k2 = 2.0 # Gain pour l'erreur latérale
+        self.v_const = 0.2  # Vitesse linéaire constante
+        self.lookahead = 0.5  # Distance de lookahead pour la recherche de point
         
-        # Paramètres de suivi de trajectoire
-        self.look_ahead_distance = rospy.get_param('~look_ahead_distance', 0.3)
-        self.max_linear_vel = rospy.get_param('~max_linear_vel', 0.3)
-        self.max_angular_vel = rospy.get_param('~max_angular_vel', 1.0)
-        
-        # Variables pour stocker la trajectoire
+        # Variables pour le chemin
+        self.path_x = None
+        self.path_y = None
         self.spline_x = None
         self.spline_y = None
-        self.total_length = 0
-        self.current_path = None
+        self.current_s = 0.0  # Position curviligne actuelle
+        self.path_length = None
         
-        # Configuration TF
+        # Setup ROS
+        rospy.init_node('path_follower')
+        self.cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
+        self.path_sub = rospy.Subscriber('/planned_path', Path, self.path_callback)
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         
-        # Publishers et Subscribers
-        self.cmd_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
-        self.path_sub = rospy.Subscriber('/planned_path', Path, self.path_callback)
-        
         # Timer pour le contrôle
         self.control_timer = rospy.Timer(rospy.Duration(0.1), self.control_callback)
-        
-        rospy.loginfo("Path follower node initialized")
 
-    def path_callback(self, path_msg):
-        """Reçoit le nouveau chemin et crée l'interpolation"""
-        if len(path_msg.poses) < 2:
-            rospy.logwarn("Path too short for interpolation")
+    def path_callback(self, msg):
+        if len(msg.poses) < 2:
             return
-            
-        # Extraire les points du chemin
-        points = [(pose.pose.position.x, pose.pose.position.y) 
-                 for pose in path_msg.poses]
-        self.interpolate_path(points)
-        self.current_path = path_msg
-        rospy.loginfo("New path received and interpolated")
 
-    def interpolate_path(self, points):
-        """Crée une spline à partir des points du chemin"""
-        # Extraire coordonnées x et y
-        x_coords = [p[0] for p in points]
-        y_coords = [p[1] for p in points]
+        # Extraire les points du chemin
+        path_points = [(pose.pose.position.x, pose.pose.position.y) 
+                      for pose in msg.poses]
+        self.path_x = [p[0] for p in path_points]
+        self.path_y = [p[1] for p in path_points]
         
-        # Calculer la distance cumulée comme paramètre
-        dists = [0]
-        for i in range(1, len(points)):
-            dx = x_coords[i] - x_coords[i-1]
-            dy = y_coords[i] - y_coords[i-1]
-            d = np.sqrt(dx*dx + dy*dy)
-            dists.append(dists[-1] + d)
-        
-        # Normaliser les distances entre 0 et 1
-        self.total_length = dists[-1]
-        t = [d/self.total_length for d in dists]
+        # Créer le paramétrage par distance cumulée
+        t = [0]
+        for i in range(1, len(self.path_x)):
+            dx = self.path_x[i] - self.path_x[i-1]
+            dy = self.path_y[i] - self.path_y[i-1]
+            t.append(t[-1] + np.sqrt(dx**2 + dy**2))
         
         # Créer les splines
-        self.spline_x = CubicSpline(t, x_coords)
-        self.spline_y = CubicSpline(t, y_coords)
+        self.spline_x = CubicSpline(t, self.path_x)
+        self.spline_y = CubicSpline(t, self.path_y)
+        self.path_length = t[-1]
+        self.current_s = 0.0
 
     def get_robot_pose(self):
-        """Obtient la position actuelle du robot"""
         try:
             transform = self.tf_buffer.lookup_transform(
-                'map',
-                'base_link',
-                rospy.Time(0),
-                rospy.Duration(1.0)
-            )
-            return (transform.transform.translation.x, 
-                    transform.transform.translation.y)
-        except (tf2_ros.LookupException, 
-                tf2_ros.ConnectivityException, 
-                tf2_ros.ExtrapolationException) as e:
-            rospy.logwarn(f"Could not get robot pose: {e}")
-            return None
-
-    def find_closest_point(self, robot_pose):
-        """Trouve le point le plus proche sur la spline"""
-        if self.spline_x is None or robot_pose is None:
-            return None
+                'map', 'base_link', rospy.Time(0), rospy.Duration(1.0))
+            x = transform.transform.translation.x
+            y = transform.transform.translation.y
             
-        # Échantillonner la spline pour trouver le point le plus proche
-        t_samples = np.linspace(0, 1, 100)
-        min_dist = float('inf')
-        closest_t = 0
-        
-        for t in t_samples:
-            x = self.spline_x(t)
-            y = self.spline_y(t)
-            dist = np.sqrt((x - robot_pose[0])**2 + (y - robot_pose[1])**2)
-            if dist < min_dist:
-                min_dist = dist
-                closest_t = t
-                
-        return closest_t
+            # Extraire l'angle depuis le quaternion
+            q = transform.transform.rotation
+            theta = np.arctan2(2.0*(q.w*q.z + q.x*q.y), 
+                             1.0 - 2.0*(q.y*q.y + q.z*q.z))
+            
+            return x, y, theta
+        except:
+            rospy.logwarn("Could not get robot pose")
+            return None
 
-    def compute_control(self, robot_pose, t_closest):
-        """Calcule les commandes de vitesse"""
-        # Calcule le point cible sur la trajectoire
-        t_target = min(1.0, t_closest + self.look_ahead_distance/self.total_length)
-        target_x = self.spline_x(t_target)
-        target_y = self.spline_y(t_target)
+    def find_closest_point(self, robot_x, robot_y):
+        def distance_squared(s):
+            path_x = self.spline_x(s)
+            path_y = self.spline_y(s)
+            return (path_x - robot_x)**2 + (path_y - robot_y)**2
         
-        # Calcule l'erreur d'orientation
-        dx = target_x - robot_pose[0]
-        dy = target_y - robot_pose[1]
-        target_angle = np.arctan2(dy, dx)
+        # Recherche locale autour de la position curviligne actuelle
+        window = 0.5  # Taille de la fenêtre de recherche
+        s_min = max(0, self.current_s - window)
+        s_max = min(self.path_length, self.current_s + window)
         
-        # Crée la commande
-        cmd = Twist()
-        cmd.linear.x = self.max_linear_vel
-        angle_diff = target_angle
-        cmd.angular.z = np.clip(angle_diff, -self.max_angular_vel, self.max_angular_vel)
+        result = minimize_scalar(distance_squared, 
+                               bounds=(s_min, s_max),
+                               method='bounded')
         
-        return cmd
+        return result.x
+
+    def compute_control(self, robot_x, robot_y, robot_theta, s):
+        # Position sur le chemin
+        path_x = self.spline_x(s)
+        path_y = self.spline_y(s)
+        
+        # Tangente
+        dx = self.spline_x.derivative(1)(s)
+        dy = self.spline_y.derivative(1)(s)
+        path_theta = np.arctan2(dy, dx)
+        
+        # Erreurs
+        theta_e = self.normalize_angle(robot_theta - path_theta)
+        d = np.sign((path_y - robot_y)*np.cos(robot_theta) - 
+                   (path_x - robot_x)*np.sin(robot_theta)) * \
+            np.sqrt((path_x - robot_x)**2 + (path_y - robot_y)**2)
+        
+        # Loi de commande
+        omega = -self.k1*self.v_const*np.sin(theta_e)/theta_e*theta_e - \
+                self.k2*self.v_const*d
+        
+        return self.v_const, omega
+
+    def normalize_angle(self, angle):
+        while angle > np.pi:
+            angle -= 2*np.pi
+        while angle < -np.pi:
+            angle += 2*np.pi
+        return angle
 
     def control_callback(self, event):
-        """Callback du timer pour le contrôle"""
-        if self.current_path is None or self.spline_x is None:
+        if self.spline_x is None or self.spline_y is None:
             return
             
         robot_pose = self.get_robot_pose()
         if robot_pose is None:
             return
             
-        t_closest = self.find_closest_point(robot_pose)
-        if t_closest is not None:
-            cmd = self.compute_control(robot_pose, t_closest)
-            self.cmd_pub.publish(cmd)
+        robot_x, robot_y, robot_theta = robot_pose
+        
+        # Trouver le point le plus proche sur le chemin
+        self.current_s = self.find_closest_point(robot_x, robot_y)
+        
+        # Si on est à la fin du chemin, arrêter
+        if self.current_s >= self.path_length - 0.1:
+            cmd = Twist()
+            self.cmd_vel_pub.publish(cmd)
+            return
+            
+        # Calculer et publier la commande
+        v, omega = self.compute_control(robot_x, robot_y, robot_theta, 
+                                      self.current_s)
+        
+        cmd = Twist()
+        cmd.linear.x = v
+        cmd.angular.z = omega
+        self.cmd_vel_pub.publish(cmd)
 
 if __name__ == '__main__':
     try:
-        node = PathFollowerNode()
+        follower = PathFollower()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
+from astar_planner import AStarPlanner
 import rospy
 from nav_msgs.msg import Path
 from nav_msgs.srv import GetMap
@@ -7,7 +11,6 @@ from geometry_msgs.msg import PoseStamped, Point
 from visualization_msgs.msg import Marker
 import tf2_ros
 import tf2_geometry_msgs
-from astar_planner import AStarPlanner 
 
 class PathPlannerNode:
     def __init__(self):
