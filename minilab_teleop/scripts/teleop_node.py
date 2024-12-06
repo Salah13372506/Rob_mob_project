@@ -20,10 +20,10 @@ class TeleopNode:
         
     def joy_callback(self, joy_msg):
         # Axe vertical gauche pour vitesse linéaire
-        self.cmd_msg.linear.x = joy_msg.axes[5] * self.linear_scale
+        self.cmd_msg.linear.x = joy_msg.axes[7] * self.linear_scale
         
         # Axe horizontal gauche pour vitesse angulaire
-        self.cmd_msg.angular.z = joy_msg.axes[2] * self.angular_scale
+        self.cmd_msg.angular.z = joy_msg.axes[3] * self.angular_scale
         
         # Publier la commande
         self.cmd_pub.publish(self.cmd_msg)
