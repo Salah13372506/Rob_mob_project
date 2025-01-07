@@ -17,15 +17,22 @@
     <!-- Planificateur de chemin -->
     <node name="path_planner" pkg="minilab_navigation" type="path_planner_node.py" output="screen"/>
 
-    <!-- Waypoint follower à la place du path follower -->
+    <!-- Waypoint follower avec les nouveaux paramètres -->
     <node name="waypoint_follower" pkg="minilab_navigation" type="waypoint_follower_node.py" output="screen">
-        <param name="k_rho" value="20" />        <!-- Gain pour la distance (similaire à v_const) -->
-        <param name="k_alpha" value="5" />      <!-- Gain pour l'angle (similaire à k1) -->
+        <!-- Paramètres géométriques du robot -->
+        <param name="l1" value="0.15" />         <!-- Distance du point de contrôle à l'axe des roues -->
+        
+        <!-- Gains de la loi de commande -->
+        <param name="k1" value="1.0" />         <!-- Gain pour l'erreur en x -->
+        <param name="k2" value="1.0" />         <!-- Gain pour l'erreur en y -->
+        
+        <!-- Paramètres de sécurité -->
         <param name="max_linear_speed" value="0.5" />
         <param name="max_angular_speed" value="0.5" />
-        <param name="dist_threshold" value="0.1" />
-        <param name="lookahead_distance" value="0.2" />
-        <param name="max_points_ahead" value="5" />
+        <param name="dist_threshold" value="0.25" />
+        
+        <!-- Debug -->
+        <param name="debug" value="true" />
     </node>
 
     <!-- RViz -->

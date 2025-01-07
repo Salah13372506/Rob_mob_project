@@ -12,24 +12,23 @@ class WaypointFollower:
     def __init__(self):
         rospy.init_node('waypoint_follower')
         
-        # Paramètres du contrôleur
-        self.k_linear = rospy.get_param('~k_linear', 1)    # Gain proportionnel vitesse linéaire (réduit)
-        self.k_angular = rospy.get_param('~k_angular', 5)  # Gain proportionnel vitesse angulaire (réduit)
-        self.k_smooth = rospy.get_param('~k_smooth', 0.2)    # Facteur de lissage pour la vitesse
-        self.prev_v = 0.0  # Pour le lissage de la vitesse linéaire
-        self.prev_omega = 0.0  # Pour le lissage de la vitesse angulaire
+        # Paramètres géométriques du robot
+        self.l1 = rospy.get_param('~l1', 0.2)  # Distance du point de contrôle à l'axe des roues
         
-        # Seuils et paramètres de sécurité
-        self.dist_threshold = rospy.get_param('~dist_threshold', 0.1)
-        self.max_linear_speed = rospy.get_param('~max_linear_speed', 1.5)
+        # Gains de commande (selon le cours)
+        self.k1 = rospy.get_param('~k1', 1.0)  # Gain pour erreur en x
+        self.k2 = rospy.get_param('~k2', 1.0)  # Gain pour erreur en y
+        
+        # Paramètres de sécurité et seuils
+        self.max_linear_speed = rospy.get_param('~max_linear_speed', 0.5)
         self.max_angular_speed = rospy.get_param('~max_angular_speed', 1.0)
+        self.dist_threshold = rospy.get_param('~dist_threshold', 0.3)
         self.debug = rospy.get_param('~debug', True)
-
-        self.total_points = 0
-        self.current_waypoint_idx = 0
         
         # Variables d'état
         self.waypoints = []
+        self.current_waypoint_idx = 0
+        self.total_points = 0
         self.is_active = False
         
         # Setup TF
@@ -41,87 +40,64 @@ class WaypointFollower:
         self.markers_pub = rospy.Publisher('/waypoint_markers', MarkerArray, queue_size=1)
         self.goal_reached_pub = rospy.Publisher('/waypoint/goal_reached', Bool, queue_size=1)
         
-        # Paramètres de navigation
-        self.lookahead_distance = rospy.get_param('~lookahead_distance', 0.2)
-        self.max_points_ahead = rospy.get_param('~max_points_ahead', 5)
-
-        # Subscriber pour le chemin planifié
+        # Subscriber
         rospy.Subscriber('/planned_path', Path, self.path_callback)
         
-        # Timer de contrôle
+        # Timer de contrôle (10Hz)
         self.control_timer = rospy.Timer(rospy.Duration(0.1), self.control_loop)
         
         rospy.loginfo("Waypoint follower initialized")
 
-    def find_best_waypoint(self, x, y, current_idx):
-        """Trouve le meilleur point à suivre en regardant plusieurs points en avant"""
-        best_distance = float('inf')
-        best_idx = current_idx
-        
-        end_idx = min(current_idx + self.max_points_ahead, len(self.waypoints))
-        
-        for idx in range(current_idx, end_idx):
-            wp_x, wp_y = self.waypoints[idx]
-            distance = np.sqrt((wp_x - x)**2 + (wp_y - y)**2)
-            
-            if distance < self.lookahead_distance:
-                best_idx = idx + 1
-                if best_idx >= len(self.waypoints):
-                    return len(self.waypoints) - 1
-            
-            if distance < best_distance:
-                best_distance = distance
-                best_idx = idx
-                
-        return best_idx
-
     def compute_control(self, x, y, theta, goal_x, goal_y):
-        """Calcule les commandes avec une loi proportionnelle améliorée"""
-        # Calcul des erreurs
-        dx = goal_x - x
-        dy = goal_y - y
+        """
+        Calcule les commandes selon les équations du cours pour un robot unicycle
+        """
+        from math import cos, sin
+        # 1. Calcul des erreurs dans le repère monde
+        ex = x - goal_x
+        ey = y - goal_y
         
-        # Distance euclidienne au but
-        distance = np.sqrt(dx**2 + dy**2)
+        # 2. Calcul des vitesses dans le repère monde selon le cours
+        v1 = -self.k1 * ex
+        v2 = -self.k2 * ey
         
-        # Angle désiré vers le but
-        desired_theta = np.arctan2(dy, dx)
+        # 3. Transformation des vitesses monde en vitesses robot
+        # Matrice de transformation selon le cours:
+        # [v1] = [cos(θ)    -l1*sin(θ)] [u1]
+        # [v2]   [sin(θ)     l1*cos(θ)] [u2]
         
-        # Erreur d'angle
-        theta_error = self.normalize_angle(desired_theta - theta)
+        # Inverse de la matrice (calcul analytique pour efficacité)
+        u1 = (cos(theta) * v1 + sin(theta) * v2)
+        u2 = (-sin(theta) * v1 / self.l1 + cos(theta) * v2 / self.l1)
         
-        # Calcul de la vitesse linéaire avec une fonction non-linéaire
-        # Utilisation d'une fonction exponentielle pour avoir une approche plus douce
-        v_target = self.k_linear * distance * np.exp(-abs(theta_error))
+        # 4. Saturation des vitesses
+        u1 = np.clip(u1, -self.max_linear_speed, self.max_linear_speed)
+        u2 = np.clip(u2, -self.max_angular_speed, self.max_angular_speed)
         
-        # La vitesse angulaire avec terme proportionnel à la distance
-        omega_target = self.k_angular * theta_error
+        # 5. Calcul de la distance pour le critère d'arrêt
+        distance = np.sqrt(ex**2 + ey**2)
         
-        # Ajout d'un terme de correction pour mieux suivre la ligne
-        if distance > self.dist_threshold:
-            omega_target += self.k_angular * 0.5 * np.sign(theta_error) * (distance / self.lookahead_distance)
-        
-        # Lissage des vitesses pour éviter les changements brusques
-        v = (1 - self.k_smooth) * self.prev_v + self.k_smooth * v_target
-        omega = (1 - self.k_smooth) * self.prev_omega + self.k_smooth * omega_target
-        
-        # Saturation des vitesses
-        v = np.clip(v, -self.max_linear_speed, self.max_linear_speed)
-        omega = np.clip(omega, -self.max_angular_speed, self.max_angular_speed)
-        
-        # Enregistrement des vitesses pour le prochain cycle
-        self.prev_v = v
-        self.prev_omega = omega
-        
-        return v, omega, distance
+        return u1, u2, distance
 
-    def normalize_angle(self, angle):
-        """Normalise un angle dans [-pi, pi]"""
-        while angle > np.pi:
-            angle -= 2*np.pi
-        while angle < -np.pi:
-            angle += 2*np.pi
-        return angle
+    def get_robot_pose(self):
+        """Obtient la pose actuelle du robot"""
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                'map', 'base_link',
+                rospy.Time(0),
+                rospy.Duration(1.0)
+            )
+            x = transform.transform.translation.x
+            y = transform.transform.translation.y
+            q = transform.transform.rotation
+            theta = np.arctan2(2.0*(q.w*q.z + q.x*q.y),
+                             1.0 - 2.0*(q.y*q.y + q.z*q.z))
+            return x, y, theta
+        except (tf2_ros.LookupException, 
+                tf2_ros.ConnectivityException,
+                tf2_ros.ExtrapolationException) as e:
+            rospy.logwarn(f"Could not get robot pose: {e}")
+            return None
 
     def path_callback(self, msg):
         """Callback pour recevoir le chemin planifié"""
@@ -130,37 +106,57 @@ class WaypointFollower:
         self.current_waypoint_idx = 0
         self.total_points = len(self.waypoints)
         self.is_active = True
-        
-        rospy.loginfo("=== Nouveau chemin reçu ===")
-        rospy.loginfo(f"Nombre total de points: {self.total_points}")
-        if self.debug and self.waypoints:
-            rospy.loginfo("Points de passage:")
-            for i, (x, y) in enumerate(self.waypoints):
-                rospy.loginfo(f"  Point {i}: ({x:.2f}, {y:.2f})")
-        
         self.publish_markers()
+        
+        if self.debug:
+            rospy.loginfo(f"Received path with {self.total_points} waypoints")
 
-    def get_robot_pose(self):
-        """Obtient la pose actuelle du robot"""
-        try:
-            transform = self.tf_buffer.lookup_transform('map', 'base_link',
-                                                      rospy.Time(0), 
-                                                      rospy.Duration(1.0))
-            x = transform.transform.translation.x
-            y = transform.transform.translation.y
-            q = transform.transform.rotation
-            theta = np.arctan2(2.0*(q.w*q.z + q.x*q.y),
-                             1.0 - 2.0*(q.y*q.y + q.z*q.z))
-            return x, y, theta
-        except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
-                tf2_ros.ExtrapolationException) as e:
-            rospy.logwarn(f"Could not get robot pose: {e}")
-            return None
+    def control_loop(self, event):
+        """Boucle principale de contrôle"""
+        if not self.is_active or not self.waypoints:
+            return
+            
+        # 1. Obtenir la pose actuelle du robot
+        robot_pose = self.get_robot_pose()
+        if robot_pose is None:
+            return
+            
+        x, y, theta = robot_pose
+        
+        # 2. Obtenir le point cible actuel
+        goal_x, goal_y = self.waypoints[self.current_waypoint_idx]
+        
+        # 3. Calculer les commandes
+        v, omega, distance = self.compute_control(x, y, theta, goal_x, goal_y)
+        
+        # 4. Vérifier si on a atteint le point courant
+        if distance < self.dist_threshold:
+            self.current_waypoint_idx += 1
+            
+            # Si on a atteint le dernier point
+            if self.current_waypoint_idx >= len(self.waypoints):
+                self.is_active = False
+                self.stop_robot()
+                self.goal_reached_pub.publish(Bool(True))
+                rospy.loginfo("Navigation completed")
+                return
+        
+        # 5. Publier les commandes
+        cmd = Twist()
+        cmd.linear.x = v
+        cmd.angular.z = omega
+        self.cmd_vel_pub.publish(cmd)
+
+    def stop_robot(self):
+        """Arrête le robot"""
+        cmd = Twist()
+        self.cmd_vel_pub.publish(cmd)
 
     def publish_markers(self):
-        """Publie les marqueurs de visualisation des points de passage"""
+        """Publie les marqueurs de visualisation"""
         marker_array = MarkerArray()
         
+        # Marqueur pour les points
         points_marker = Marker()
         points_marker.header.frame_id = "map"
         points_marker.header.stamp = rospy.Time.now()
@@ -173,6 +169,7 @@ class WaypointFollower:
         points_marker.color.r = 1.0
         points_marker.color.a = 1.0
         
+        # Marqueur pour les lignes
         lines_marker = Marker()
         lines_marker.header.frame_id = "map"
         lines_marker.header.stamp = rospy.Time.now()
@@ -195,43 +192,6 @@ class WaypointFollower:
         marker_array.markers.append(points_marker)
         marker_array.markers.append(lines_marker)
         self.markers_pub.publish(marker_array)
-
-    def control_loop(self, event):
-        """Boucle principale de contrôle"""
-        if not self.is_active or not self.waypoints:
-            return
-            
-        robot_pose = self.get_robot_pose()
-        if robot_pose is None:
-            return
-            
-        x, y, theta = robot_pose
-        self.current_waypoint_idx = self.find_best_waypoint(x, y, self.current_waypoint_idx)
-        goal_x, goal_y = self.waypoints[self.current_waypoint_idx]
-        
-        v, omega, distance = self.compute_control(x, y, theta, goal_x, goal_y)
-        
-        if self.current_waypoint_idx >= len(self.waypoints) - 1 and distance < self.dist_threshold:
-            self.is_active = False
-            self.stop_robot()
-            self.goal_reached_pub.publish(Bool(True))
-            rospy.loginfo("=== Navigation terminée ===")
-            return
-            
-        if self.debug and rospy.Time.now().to_sec() % 5 < 0.1:
-            progress = (self.current_waypoint_idx / self.total_points) * 100
-            rospy.loginfo(f"Progression: {self.current_waypoint_idx+1}/{self.total_points} " +
-                         f"(distance: {distance:.2f}m, {progress:.1f}%)")
-        
-        cmd = Twist()
-        cmd.linear.x = v
-        cmd.angular.z = omega
-        self.cmd_vel_pub.publish(cmd)
-
-    def stop_robot(self):
-        """Arrête le robot"""
-        cmd = Twist()
-        self.cmd_vel_pub.publish(cmd)
 
 if __name__ == '__main__':
     try:
