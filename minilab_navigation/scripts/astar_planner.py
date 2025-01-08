@@ -16,6 +16,7 @@ class AStarPlanner:
        self.width = None
        self.height = None
        self.inflation_radius = 15
+       self.heuristic_type = "octile"  # Options: "manhattan", "diagonal", "octile", "chebyshev", "euclidean"
 
    def set_map(self, occupancy_grid):
        self.map_data = np.array(occupancy_grid.data).reshape(
@@ -75,7 +76,34 @@ class AStarPlanner:
        return smoothed
 
    def heuristic(self, a, b):
-       return np.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
+        """
+        Calcule l'heuristique entre deux points selon la méthode choisie
+        a, b: tuples (x, y) représentant les coordonnées des points
+        """
+        dx = abs(b[0] - a[0])
+        dy = abs(b[1] - a[1])
+        
+        if self.heuristic_type == "manhattan":
+            # Distance de Manhattan: plus rapide, surestime parfois
+            return dx + dy
+            
+        elif self.heuristic_type == "diagonal":
+            # Distance diagonale: bon compromis vitesse/précision
+            return dx + dy + (np.sqrt(2) - 2) * min(dx, dy)
+            
+        elif self.heuristic_type == "octile":
+            # Distance octile: similaire à diagonale mais plus rapide
+            # Utilise 0.414 comme approximation de (√2 - 1)
+            return dx + dy - 0.414 * min(dx, dy)
+            
+        elif self.heuristic_type == "chebyshev":
+            # Distance de Chebyshev: très rapide, mais moins précise
+            return max(dx, dy)
+            
+        else:  # "euclidean" - l'original
+            # Distance euclidienne: plus précise mais plus lente
+            return np.sqrt(dx * dx + dy * dy)
+        
 
    def find_path(self, start, goal):
        start_map = self.world_to_map(start[0], start[1])
