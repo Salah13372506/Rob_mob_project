@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import os
+from minilab_navigation.srv import ReturnToHome, ReturnToHomeResponse 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 from astar_planner import AStarPlanner
@@ -25,6 +26,7 @@ class PathPlannerNode:
         self.start_pose = PoseStamped()
         self.start_pose.pose.position.x = 0
         self.start_pose.pose.position.y = 0
+        self.home_position = None
         
         # Publishers
         self.path_pub = rospy.Publisher('/planned_path', Path, queue_size=1)
@@ -36,9 +38,53 @@ class PathPlannerNode:
         
         # Subscriber pour le goal
         rospy.Subscriber('/move_base_simple/goal', PoseStamped, self.goal_callback)
+
+        # Service de retour à la base
+        self.return_home_service = rospy.Service('return_to_home', ReturnToHome, self.handle_return_home)
         
+        # Enregistrer la position initiale
+        self.record_home_position()
+
         if self.debug:
             rospy.loginfo("Path planner node initialized")
+
+
+    def record_home_position(self):
+        """Enregistre la position actuelle comme position de base"""
+        rospy.sleep(1.0)  # Attendre que TF soit prêt
+        try:
+            pos = self.get_robot_pose()
+            self.home_position = pos
+            rospy.loginfo(f"Home position recorded at: {pos}")
+        except Exception as e:
+            rospy.logwarn(f"Could not record home position: {e}")
+            self.home_position = (0, 0)  # Position par défaut
+
+    def handle_return_home(self, req):
+        """Gestionnaire du service de retour à la base"""
+        if self.home_position is None:
+            return ReturnToHomeResponse(False, "Home position not set")
+
+        try:
+            # Obtenir la position actuelle
+            current_pos = self.get_robot_pose()
+            
+            # Calculer le chemin vers la position de base
+            path = self.planner.find_path(
+                current_pos,
+                self.home_position
+            )
+            
+            if path:
+                self.publish_path(path)
+                self.publish_markers(path)
+                return ReturnToHomeResponse(True, "Path to home published")
+            else:
+                return ReturnToHomeResponse(False, "Could not find path to home")
+                
+        except Exception as e:
+            return ReturnToHomeResponse(False, f"Error: {str(e)}")
+
 
     def update_map(self):
         """Récupère la carte via le service dynamic_map"""

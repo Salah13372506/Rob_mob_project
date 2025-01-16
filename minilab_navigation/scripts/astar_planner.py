@@ -15,7 +15,7 @@ class AStarPlanner:
        self.origin = None
        self.width = None
        self.height = None
-       self.inflation_radius = 15
+       self.inflation_radius = 7
        self.heuristic_type = "octile"  # Options: "manhattan", "diagonal", "octile", "chebyshev", "euclidean"
 
    def set_map(self, occupancy_grid):

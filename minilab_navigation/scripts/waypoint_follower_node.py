@@ -20,7 +20,7 @@ class WaypointFollower:
         self.k2 = rospy.get_param('~k2', 1.0)  # Gain pour erreur en y
         
         # Paramètres de sécurité et seuils
-        self.max_linear_speed = rospy.get_param('~max_linear_speed', 0.5)
+        self.max_linear_speed = rospy.get_param('~max_linear_speed', 1.0)
         self.max_angular_speed = rospy.get_param('~max_angular_speed', 1.0)
         self.dist_threshold = rospy.get_param('~dist_threshold', 0.3)
         self.debug = rospy.get_param('~debug', True)

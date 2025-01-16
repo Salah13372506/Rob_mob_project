@@ -14,7 +14,10 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   tf2
   tf2_ros
+  message_generation
+  std_msgs
 )
+
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -57,11 +60,10 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+ add_service_files(
+  FILES
+  ReturnToHome.srv
+)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -71,10 +73,11 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   geometry_msgs#   nav_msgs
-# )
+ generate_messages(
+   DEPENDENCIES
+   #geometry_msgs#   nav_msgs
+   std_msgs
+ )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -110,6 +113,7 @@ catkin_package(
 #  LIBRARIES minilab_navigation
 #  CATKIN_DEPENDS geometry_msgs minilab_simulation nav_msgs rospy tf2 tf2_ros
 #  DEPENDS system_lib
+  CATKIN_DEPENDS geometry_msgs nav_msgs rospy tf2 tf2_ros message_runtime
 )
 
 ###########
@@ -168,7 +172,7 @@ include_directories(
 # )
 catkin_install_python(PROGRAMS
   scripts/path_planner_node.py
-  scripts/path_follower_node.py
+  scripts/waypoint_follower_node.py
   scripts/astar_planner.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
