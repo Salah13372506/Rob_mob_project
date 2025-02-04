@@ -1,0 +1,13 @@
+<launch>
+<!-- Launch the simulation environment first -->
+<!-- SLAM avec gmapping -->
+<include file="$(find minilab_simulation)/launch/gmapping.launch"/>
+<!-- Random explorer node -->
+<node name="random_explorer" pkg="minilab_navigation" type="random_explorer_node.py" output="screen">
+<param name="min_distance" value="0.5"/>
+<param name="max_linear_speed" value="0.2"/>
+<param name="max_angular_speed" value="0.3"/>
+</node>
+<!-- RViz -->
+<node name="rviz" pkg="rviz" type="rviz" args="-d $(find minilab_navigation)/config/path.rviz"/>
+</launch>

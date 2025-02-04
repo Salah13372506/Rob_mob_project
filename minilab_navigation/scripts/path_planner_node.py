@@ -64,6 +64,9 @@ class PathPlannerNode:
         """Gestionnaire du service de retour à la base"""
         if self.home_position is None:
             return ReturnToHomeResponse(False, "Home position not set")
+        
+        if not self.update_map():
+            return ReturnToHomeResponse(False, "Failed to get map from service")
 
         try:
             # Obtenir la position actuelle

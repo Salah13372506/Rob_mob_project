@@ -1,7 +1,6 @@
 <?xml version="1.0"?>
 <launch>
     <!-- Launch the simulation environment first -->
-    <include file="$(find minilab_simulation)/launch/minilab_simulation.launch"/>
 
 
     <include file="$(find minilab_simulation)/launch/gmapping.launch"/>

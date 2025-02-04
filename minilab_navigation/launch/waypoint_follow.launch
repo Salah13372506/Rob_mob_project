@@ -1,9 +1,12 @@
 <launch>
     <!-- Launch the simulation environment first -->
+
     <include file="$(find minilab_simulation)/launch/minilab_simulation.launch"/>
+
 
     <!-- SLAM avec gmapping -->
     <include file="$(find minilab_simulation)/launch/gmapping.launch"/>
+
 
     <!-- Launch teleop node for converting joy commands to robot velocity -->
     <node pkg="minilab_teleop" type="teleop_node.py" name="minilab_teleop" output="screen">
